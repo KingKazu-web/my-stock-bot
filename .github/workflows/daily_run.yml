@@ -1,8 +1,9 @@
 name: Daily Stock Bot
+
 on:
   schedule:
-    - cron: '0 14 * * 1-5'
-  workflow_dispatch:
+    - cron: '0 14 * * 1-5' # Runs Mon-Fri at 9:30 AM EST
+  workflow_dispatch: # Allows manual "Run" button
 
 jobs:
   build:
@@ -10,14 +11,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install dependencies
         run: pip install yfinance requests
+
       - name: Run script
         env:
           MY_EMAIL: ${{ secrets.MY_EMAIL }}
           MY_PASSWORD: ${{ secrets.MY_PASSWORD }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         run: python -u main.py
