@@ -61,4 +61,50 @@ def run_tracker():
             stock = yf.Ticker(ticker)
             hist = stock.history(period="5d")
             
-            if hist.empty
+            # THE FIX: Added the missing colon after hist.empty below
+            if hist.empty or len(hist) < 2:
+                report += f"⚪ {ticker}: Data temporarily unavailable.\n\n"
+                continue
+                
+            price = hist['Close'].iloc[-1]
+            prev_price = hist['Close'].iloc[-2]
+            change = ((price - prev_price) / prev_price) * 100
+            
+            # Trigger Alert if move is > 3%
+            if abs(change) >= 3.0: 
+                big_moves = True 
+
+            headline = get_pro_news(ticker)
+            sentiment = get_sentiment(headline)
+            
+            indicator = "📈" if change > 0 else "📉"
+            report += f"{indicator} {ticker}: ${price:.2f} ({change:.2f}%)\n"
+            report += f"🎭 MOOD: {sentiment}\n"
+            report += f"📰 NEWS: {headline}\n"
+            report += "--------------------------------------------------\n"
+        except Exception as e:
+            print(f"Error on {ticker}: {e}")
+
+    # --- EMAIL SECTION ---
+    print("✉️ Preparing email...")
+    msg = EmailMessage()
+    msg.set_content(report)
+    
+    subject = f"Market Intel: {today_str}"
+    if big_moves:
+        subject = f"⚠️ ALERT: High Volatility Detected! - {today_str}"
+    
+    msg['Subject'] = subject
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = SENDER_EMAIL
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
+            smtp.send_message(msg)
+        print("✅ SUCCESS: Intelligence report delivered!")
+    except Exception as e:
+        print(f"❌ EMAIL FAILED: {e}")
+
+if __name__ == "__main__":
+    run_tracker()
