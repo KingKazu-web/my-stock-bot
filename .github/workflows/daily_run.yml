@@ -1,1 +1,23 @@
+name: Daily Stock Bot
+on:
+  schedule:
+    - cron: '0 14 * * 1-5' # Runs at 2:00 PM UTC (roughly 9:30 AM EST) Mon-Fri
+  workflow_dispatch: # This adds a manual "Run" button!
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install yfinance
+      - name: Run script
+        env:
+          MY_EMAIL: ${{ secrets.MY_EMAIL }}
+          MY_PASSWORD: ${{ secrets.MY_PASSWORD }}
+        run: python main.py
