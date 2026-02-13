@@ -5,73 +5,58 @@ import requests
 from email.message import EmailMessage
 import datetime
 
-# --- SETTINGS & SECRETS ---
+print("--- Starting Script ---")
+
+# 1. Check Secrets (Safely)
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
 EMAIL_APP_PASSWORD = os.environ.get("MY_PASSWORD")
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
 
-# This helps NewsAPI find better results by using names instead of just symbols
-COMPANY_NAMES = {
-    "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "Nvidia", 
-    "AMZN": "Amazon", "META": "Meta Platforms", "GOOGL": "Google",
-    "BRK-B": "Berkshire Hathaway", "LLY": "Eli Lilly", 
-    "AVGO": "Broadcom", "TSLA": "Tesla"
-}
+if not SENDER_EMAIL or not EMAIL_APP_PASSWORD:
+    print("❌ ERROR: Email or Password secrets are missing!")
+if not NEWS_API_KEY:
+    print("⚠️ WARNING: News API Key is missing!")
+
+COMPANY_NAMES = {"AAPL": "Apple", "NVDA": "Nvidia", "TSLA": "Tesla"} # Shorter list for testing
 
 def get_pro_news(ticker):
-    """Fetches the latest headline using NewsAPI with improved search"""
     query = COMPANY_NAMES.get(ticker, ticker)
-    
-    # We look for the company name in the title of the news
-    url = f'https://newsapi.org/v2/everything?qInTitle={query}&language=en&sortBy=publishedAt&pageSize=1&apiKey={NEWS_API_KEY}'
-    
+    url = f'https://newsapi.org/v2/everything?qInTitle={query}&language=en&pageSize=1&apiKey={NEWS_API_KEY}'
     try:
         response = requests.get(url)
         data = response.json()
-        
-        # If the API returns an error, we want to know what it is
-        if data.get('status') == 'error':
-            return f"API Error: {data.get('message')}"
-            
-        if data.get('articles') and len(data['articles']) > 0:
+        if data.get('articles'):
             return data['articles'][0]['title']
-        else:
-            # Fallback: Search everything (not just titles) if title search fails
-            fallback_url = f'https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&pageSize=1&apiKey={NEWS_API_KEY}'
-            fb_res = requests.get(fallback_url).json()
-            if fb_res.get('articles'):
-                return fb_res['articles'][0]['title']
-                
     except Exception as e:
-        return f"System Error: {str(e)}"
-    
-    return "No recent news found."
+        return f"News Error: {e}"
+    return "No news found."
 
 def run_tracker():
-    # The Top 10 S&P 500 Tickers
-    watchlist = list(COMPANY_NAMES.keys())
-    
-    today_str = datetime.date.today().strftime("%B %d, %Y")
-    report = f"📊 S&P 500 TOP 10 - INTELLIGENCE REPORT ({today_str})\n"
-    report += "--------------------------------------------------\n\n"
-    
-    for ticker in watchlist:
-        print(f"Processing {ticker}...") # This helps us see progress in GitHub Logs
+    report = "📊 TEST REPORT\n\n"
+    for ticker in COMPANY_NAMES.keys():
+        print(f"🔍 Fetching {ticker}...")
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="2d")
-        
-        if len(hist) < 2:
-            report += f"⚪ {ticker}: Data temporarily unavailable.\n"
-            continue
-        
-        price = hist['Close'].iloc[-1]
-        prev_price = hist['Close'].iloc[-2]
-        change = ((price - prev_price) / prev_price) * 100
-        
-        # Get News
-        headline = get_pro_news(ticker)
-        
-        # Status Label
-        status = "Watching"
-        if change <= -2.0: status = "🔥 OPPORTUNITY (Dip)"
-        elif change >= 2.0: status
+        price = stock.history(period="1d")['Close'].iloc[-1]
+        report += f"{ticker}: ${price:.2f}\n"
+        report += f"📰 {get_pro_news(ticker)}\n\n"
+
+    print("✉️ Attempting to send email...")
+    msg = EmailMessage()
+    msg.set_content(report)
+    msg['Subject'] = "Stock Test"
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = SENDER_EMAIL
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            print(f"Connecting to Gmail as {SENDER_EMAIL}...")
+            smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
+            print("Login successful!")
+            smtp.send_message(msg)
+            print("✅ EMAIL SENT SUCCESSFULLY!")
+    except Exception as e:
+        print(f"❌ EMAIL FAILED: {e}")
+
+if __name__ == "__main__":
+    run_tracker()
+    print("--- Script Finished ---")
