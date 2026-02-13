@@ -1,8 +1,8 @@
 name: Daily Stock Bot
 on:
   schedule:
-    - cron: '0 14 * * 1-5' # Runs at 2:00 PM UTC (roughly 9:30 AM EST) Mon-Fri
-  workflow_dispatch: # This adds a manual "Run" button!
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   build:
