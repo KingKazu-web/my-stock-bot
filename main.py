@@ -5,7 +5,7 @@ import requests
 import datetime
 from email.message import EmailMessage
 
-print("--- Starting Market Intelligence Bot: Yahoo Siphon Edition ---")
+print("--- Starting Market Intelligence Bot: Bulletproof Edition ---")
 
 # 1. SETUP SECRETS
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
@@ -15,20 +15,20 @@ NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
 # 2. ASSETS
 ASSETS = {
     "STOCKS": {
-        "AAPL": "Apple Stock", "NVDA": "Nvidia", "TSLA": "Tesla", 
+        "AAPL": "Apple", "NVDA": "Nvidia", "TSLA": "Tesla", 
         "AMZN": "Amazon", "META": "Meta Platforms"
     },
     "CRYPTO": {
         "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana"
     },
     "MACRO": {
-        "GC=F": "Gold Price", "CL=F": "Crude Oil", 
-        "^TNX": "Treasury Yield", "^GSPC": "S&P 500"
+        "GC=F": "Gold", "CL=F": "Crude Oil", 
+        "^TNX": "Treasury", "^GSPC": "S&P 500"
     }
 }
 
 def get_market_why():
-    """Siphons top news from the S&P 500 to act as the global 'Why'."""
+    """Siphons top news from the S&P 500 for the global catalyst."""
     try:
         market = yf.Ticker("^GSPC")
         news = market.news
@@ -60,19 +60,27 @@ def calculate_rsi(prices, periods=14):
     return round(100 - (100 / (1 + rs)), 1)
 
 def get_pro_news_data(ticker, name):
+    """Simplified, high-hit-rate news fetcher."""
     if not NEWS_API_KEY: return "Key missing.", "#"
-    trusted = "reuters.com,cnbc.com,bloomberg.com,wsj.com,marketwatch.com"
-    url = f'https://newsapi.org/v2/everything?q={name}&domains={trusted}&language=en&sortBy=relevancy&pageSize=1&apiKey={NEWS_API_KEY}'
+    
+    # Clean ticker (e.g., BTC-USD -> BTC, GC=F -> Gold)
+    clean_ticker = ticker.split('-')[0].replace('^', '').replace('=F', '')
+    
+    # We search for the ticker AND the word 'stock' or 'market' to ensure relevance
+    # Removing domain filters to ensure we ALWAYS find a link
+    query = f"({clean_ticker} OR {name}) AND (stock OR market OR price)"
+    url = f'https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&pageSize=1&apiKey={NEWS_API_KEY}'
+    
     try:
         r = requests.get(url).json()
         articles = r.get('articles', [])
-        if not articles:
-            url_broad = f'https://newsapi.org/v2/everything?q={name}&language=en&sortBy=relevancy&pageSize=1&apiKey={NEWS_API_KEY}'
-            articles = requests.get(url_broad).json().get('articles', [])
         if articles:
             return articles[0]['title'], articles[0]['url']
-    except: pass
-    return "Steady session: No major news headlines.", "https://news.google.com/search?q=" + name
+    except:
+        pass
+    
+    # Ultimate Fallback: Direct Yahoo Finance News link
+    return f"View latest {name} news on Yahoo.", f"https://finance.yahoo.com/quote/{ticker}/news"
 
 def run_tracker():
     today_str = datetime.date.today().strftime("%b %d, %Y")
@@ -97,7 +105,6 @@ def run_tracker():
                 if change > 0: advancers += 1
                 else: decliners += 1
 
-                # Conviction (Volume Spike)
                 curr_vol, avg_vol = hist['Volume'].iloc[-1], hist['Volume'].iloc[-31:-1].mean()
                 conviction = "⚡" if curr_vol > (avg_vol * 1.5) else ""
                 if conviction: vol_detected = True
@@ -124,8 +131,8 @@ def run_tracker():
     <div style="background: #f1f2f6; padding: 15px; border-radius: 8px; font-size: 0.82em; color: #2f3542; margin-top: 25px; line-height: 1.5;">
         <b>📌 REPORT LEGEND</b><br>
         • <b>Momentum:</b> <code>[●▬▬▬▬]</code> 7-day low | <code>[▬▬●▬▬]</code> Average | <code>[▬▬▬▬●]</code> 7-day high.<br>
-        • <b>RSI:</b> 🔥 Hot (Overbought > 70) | ❄️ Cold (Oversold < 30).<br>
-        • <b>Conviction:</b> ⚡ High Volume (>1.5x monthly average).
+        • <b>RSI:</b> 🔥 Hot (> 70) | ❄️ Cold (< 30).<br>
+        • <b>Conviction:</b> ⚡ High Volume (>1.5x average).
     </div>
     """
 
