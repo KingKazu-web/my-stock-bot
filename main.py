@@ -6,14 +6,14 @@ from email.message import EmailMessage
 import datetime
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-print("--- Starting Pro Intelligence Bot: Zero-Redirect Edition ---")
+print("--- Starting Pro Intelligence Bot: Final Robust Edition ---")
 
 # 1. SETUP SECRETS
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
 EMAIL_APP_PASSWORD = os.environ.get("MY_PASSWORD")
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
 
-# 2. OPTIMIZED ASSET LIST
+# 2. DEFINED ASSETS
 ASSETS = {
     "STOCKS": {
         "AAPL": "Apple", "NVDA": "Nvidia", "TSLA": "Tesla", 
@@ -32,25 +32,23 @@ ASSETS = {
 analyzer = SentimentIntensityAnalyzer()
 
 def get_sentiment(text):
-    if not text or "found" in text: return "⚪ Neutral"
+    if not text or "No" in text: return "⚪ Neutral"
     score = analyzer.polarity_scores(text)['compound']
     if score >= 0.05: return "🟢 Positive"
     if score <= -0.05: return "🔴 Negative"
     return "⚪ Neutral"
 
 def get_pro_news_data(ticker, name, category):
-    """The 'Fortress' News Fetcher: Only high-tier, direct-link sources"""
+    """The 'Fortress' News Fetcher: Only high-tier, direct-link sources."""
     if not NEWS_API_KEY: return "Key missing.", "#"
     
-    # We restrict to these domains to avoid the Yahoo Consent Wall and Junk deals
+    # Restrict to trusted domains to avoid Yahoo Consent and Junk deals
     trusted_domains = "reuters.com,cnbc.com,bloomberg.com,forbes.com,fortune.com,marketwatch.com"
     
     # Advanced Search Query
     query = f'"{name}"'
-    if category == "STOCKS":
-        query += " AND (stock OR earnings OR analyst)"
-    elif category == "CRYPTO":
-        query += " AND (crypto OR price OR bitcoin)"
+    if category == "STOCKS": query += " AND (stock OR earnings OR analyst)"
+    elif category == "CRYPTO": query += " AND (crypto OR price)"
 
     url = (f'https://newsapi.org/v2/everything?'
            f'q={query}&'
@@ -65,13 +63,10 @@ def get_pro_news_data(ticker, name, category):
         data = response.json()
         if data.get('articles') and len(data['articles']) > 0:
             article = data['articles'][0]
-            # Double check to ensure NO yahoo links snuck in
-            if "yahoo.com" not in article['url'] and "slickdeals" not in article['url']:
-                return article['title'], article['url']
-    except Exception as e:
-        print(f"News Error for {ticker}: {e}")
-        
-    return "No direct financial news found.", "#"
+            return article['title'], article['url']
+    except:
+        pass
+    return "No recent financial news found.", "#"
 
 def run_tracker():
     today_str = datetime.date.today().strftime("%B %d, %Y")
@@ -79,14 +74,13 @@ def run_tracker():
     
     html_content = f"""
     <html>
-    <body style="font-family: 'Segoe UI', Tahoma, sans-serif; color: #2d3436; line-height: 1.6;">
-        <h1 style="color: #0984e3; border-bottom: 3px solid #0984e3; padding-bottom: 10px;">🏛️ Executive Market Intel: {today_str}</h1>
+    <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
+        <h1 style="color: #0984e3; border-bottom: 2px solid #0984e3;">🏛️ Executive Market Intel: {today_str}</h1>
     """
     
     report_body = ""
-
     for category, items in ASSETS.items():
-        report_body += f"<h2 style='background: #dfe6e9; padding: 8px 15px; border-radius: 5px; color: #2d3436;'>{category}</h2>"
+        report_body += f"<h2 style='background: #f1f2f6; padding: 5px; margin-top:20px;'>{category}</h2>"
         for ticker, name in items.items():
             print(f"🔍 Analyzing {name}...")
             try:
@@ -103,52 +97,35 @@ def run_tracker():
                 
                 color = "#27ae60" if change > 0 else "#e74c3c"
                 report_body += f"""
-                <div style="margin-bottom: 20px; border-left: 6px solid {color}; padding: 5px 15px; background: #fafafa;">
-                    <b style="font-size: 1.1em;">{ticker}: ${price:.2f} 
-                    (<span style="color: {color};">{change:+.2f}%</span>)</b><br>
-                    <span style="font-size: 0.9em; color: #636e72;">🎭 Sentiment: <b>{sentiment}</b></span><br>
-                    📰 <a href="{link}" style="color: #0984e3; text-decoration: none; font-weight: 500;">{headline}</a>
+                <div style="border-left: 5px solid {color}; padding-left: 10px; margin-bottom: 10px;">
+                    <b>{ticker}: ${price:.2f} (<span style="color: {color};">{change:+.2f}%</span>)</b><br>
+                    🎭 Mood: {sentiment} | 📰 <a href="{link}">{headline}</a>
                 </div>
                 """
             except Exception as e:
                 print(f"Error {ticker}: {e}")
 
-    summary_html = ""
-    if all_changes:
-        best = max(all_changes, key=lambda x: x[1])
-        worst = min(all_changes, key=lambda x: x[1])
-        summary_html = f"""
-        <div style="background: #f1f2f6; border: 1px solid #ced4da; padding: 20px; border-radius: 10px; margin-bottom: 30px;">
-            <b style="font-size: 1.2em; color: #2d3436;">📊 MARKET SNAPSHOT</b><br>
-            <span style="color: #27ae60; font-weight: bold;">▲ Leader:</span> {best[0]} ({best[1]:.2f}%)<br>
-            <span style="color: #e74c3c; font-weight: bold;">▼ Laggard:</span> {worst[0]} ({worst[1]:.2f}%)
-        </div>
-        """
+    html_content += report_body + "</body></html>"
 
-    html_content += summary_html + report_body + "</body></html>"
-
-   # --- EMAIL SENDING (FIXED SUBJECT LOGIC) ---
+    # --- EMAIL SENDING (One-Subject Fix) ---
     msg = EmailMessage()
-    
-    # 1. Determine the subject first
     top_move = max([abs(x[1]) for x in all_changes]) if all_changes else 0
     final_subject = f"Market Intel: {today_str}"
-    
     if top_move > 4.0:
         final_subject = f"🚨 VOLATILITY ALERT: {today_str}"
         
-    # 2. Assign the subject only ONCE
     msg['Subject'] = final_subject
     msg['From'] = SENDER_EMAIL
     msg['To'] = SENDER_EMAIL
-    
-    msg.set_content("Use an HTML email client to view the full report.")
     msg.add_alternative(html_content, subtype='html')
 
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
             smtp.send_message(msg)
-        print(f"✅ Success! Report delivered with subject: {final_subject}")
+        print(f"✅ Success! Report sent: {final_subject}")
     except Exception as e:
-        print(f"❌ Failed to send email: {e}")
+        print(f"❌ Failed: {e}")
+
+if __name__ == "__main__":
+    run_tracker()
