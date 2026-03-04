@@ -3,7 +3,7 @@ name: Daily Market Intel
 on:
   schedule:
     - cron: '0 13 * * 1-5'  # Runs 1:00 PM UTC = 9:00 AM EST, weekdays only
-  workflow_dispatch:          # Lets you trigger it manually from GitHub as a test
+  workflow_dispatch:          # Adds a manual "Run" button in GitHub for testing
 
 jobs:
   send-report:
@@ -19,7 +19,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install yfinance requests
+        run: |
+          pip install --upgrade pip
+          pip install yfinance matplotlib requests
 
       - name: Run tracker
         env:
