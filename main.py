@@ -127,19 +127,28 @@ def run_tracker():
 
     html_content += summary_html + report_body + "</body></html>"
 
+   # --- EMAIL SENDING (FIXED SUBJECT LOGIC) ---
     msg = EmailMessage()
-    msg['Subject'] = f"Market Intel: {today_str}"
-    if all_changes and max([abs(x[1]) for x in all_changes]) > 4.0:
-        msg['Subject'] = f"🚨 VOLATILITY ALERT: {today_str}"
+    
+    # 1. Determine the subject first
+    top_move = max([abs(x[1]) for x in all_changes]) if all_changes else 0
+    final_subject = f"Market Intel: {today_str}"
+    
+    if top_move > 4.0:
+        final_subject = f"🚨 VOLATILITY ALERT: {today_str}"
         
+    # 2. Assign the subject only ONCE
+    msg['Subject'] = final_subject
     msg['From'] = SENDER_EMAIL
     msg['To'] = SENDER_EMAIL
+    
+    msg.set_content("Use an HTML email client to view the full report.")
     msg.add_alternative(html_content, subtype='html')
 
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
-        smtp.send_message(msg)
-    print("✅ Executive Report Delivered. No more redirects!")
-
-if __name__ == "__main__":
-    run_tracker()
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
+            smtp.send_message(msg)
+        print(f"✅ Success! Report delivered with subject: {final_subject}")
+    except Exception as e:
+        print(f"❌ Failed to send email: {e}")
