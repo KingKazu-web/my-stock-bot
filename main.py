@@ -6,14 +6,14 @@ from email.message import EmailMessage
 import datetime
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-print("--- Starting Pro Intelligence Bot: Final Robust Edition ---")
+print("--- Starting Pro Intelligence Bot: Executive Edition ---")
 
 # 1. SETUP SECRETS
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
 EMAIL_APP_PASSWORD = os.environ.get("MY_PASSWORD")
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
 
-# 2. DEFINED ASSETS
+# 2. OPTIMIZED ASSET LIST
 ASSETS = {
     "STOCKS": {
         "AAPL": "Apple", "NVDA": "Nvidia", "TSLA": "Tesla", 
@@ -41,11 +41,7 @@ def get_sentiment(text):
 def get_pro_news_data(ticker, name, category):
     """The 'Fortress' News Fetcher: Only high-tier, direct-link sources."""
     if not NEWS_API_KEY: return "Key missing.", "#"
-    
-    # Restrict to trusted domains to avoid Yahoo Consent and Junk deals
     trusted_domains = "reuters.com,cnbc.com,bloomberg.com,forbes.com,fortune.com,marketwatch.com"
-    
-    # Advanced Search Query
     query = f'"{name}"'
     if category == "STOCKS": query += " AND (stock OR earnings OR analyst)"
     elif category == "CRYPTO": query += " AND (crypto OR price)"
@@ -57,7 +53,6 @@ def get_pro_news_data(ticker, name, category):
            f'sortBy=relevancy&'
            f'pageSize=1&' 
            f'apiKey={NEWS_API_KEY}')
-    
     try:
         response = requests.get(url)
         data = response.json()
@@ -66,21 +61,16 @@ def get_pro_news_data(ticker, name, category):
             return article['title'], article['url']
     except:
         pass
-    return "No recent financial news found.", "#"
+    return "No direct financial news found.", "#"
 
 def run_tracker():
     today_str = datetime.date.today().strftime("%B %d, %Y")
     all_changes = [] 
-    
-    html_content = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6;">
-        <h1 style="color: #0984e3; border-bottom: 2px solid #0984e3;">🏛️ Executive Market Intel: {today_str}</h1>
-    """
-    
     report_body = ""
+
+    # 3. ANALYZE ASSETS & BUILD BODY
     for category, items in ASSETS.items():
-        report_body += f"<h2 style='background: #f1f2f6; padding: 5px; margin-top:20px;'>{category}</h2>"
+        report_body += f"<h2 style='background: #dfe6e9; padding: 10px; border-radius: 5px; color: #2d3436; margin-top: 30px;'>{category}</h2>"
         for ticker, name in items.items():
             print(f"🔍 Analyzing {name}...")
             try:
@@ -97,17 +87,60 @@ def run_tracker():
                 
                 color = "#27ae60" if change > 0 else "#e74c3c"
                 report_body += f"""
-                <div style="border-left: 5px solid {color}; padding-left: 10px; margin-bottom: 10px;">
-                    <b>{ticker}: ${price:.2f} (<span style="color: {color};">{change:+.2f}%</span>)</b><br>
-                    🎭 Mood: {sentiment} | 📰 <a href="{link}">{headline}</a>
+                <div style="border-left: 6px solid {color}; padding: 10px 15px; margin-bottom: 15px; background: #fafafa;">
+                    <b style="font-size: 1.1em;">{ticker}: ${price:.2f} 
+                    (<span style="color: {color};">{change:+.2f}%</span>)</b><br>
+                    <span style="font-size: 0.9em; color: #636e72;">🎭 Mood: <b>{sentiment}</b></span><br>
+                    📰 <a href="{link}" style="color: #0984e3; text-decoration: none; font-weight: 500;">{headline}</a>
                 </div>
                 """
             except Exception as e:
                 print(f"Error {ticker}: {e}")
 
-    html_content += report_body + "</body></html>"
+    # 4. BUILD THE EXECUTIVE SUMMARY BLOCK
+    summary_html = ""
+    if all_changes:
+        best = max(all_changes, key=lambda x: x[1])
+        worst = min(all_changes, key=lambda x: x[1])
+        avg_move = sum([x[1] for x in all_changes]) / len(all_changes)
+        
+        if avg_move > 0.4: vibe = "📈 Bullish Momentum"
+        elif avg_move < -0.4: vibe = "📉 Bearish Pressure"
+        else: vibe = "⚖️ Neutral / Sideways"
 
-    # --- EMAIL SENDING (One-Subject Fix) ---
+        summary_html = f"""
+        <div style="background: #2d3436; color: #ffffff; padding: 25px; border-radius: 12px; margin-bottom: 30px; font-family: 'Segoe UI', Arial, sans-serif;">
+            <h3 style="margin-top: 0; color: #00cec9; letter-spacing: 1px;">📋 EXECUTIVE SUMMARY</h3>
+            <p style="font-size: 1.2em; margin-bottom: 10px;"><b>Market Vibe:</b> {vibe}</p>
+            <p style="color: #b2bec3;">The tracked portfolio moved an average of <b>{avg_move:+.2f}%</b> today.</p>
+            <div style="display: flex; border-top: 1px solid #636e72; pt: 15px; margin-top: 15px;">
+                <div style="flex: 1;">
+                    <span style="color: #55efc4; font-size: 0.9em;">🚀 TOP BULL</span><br>
+                    <b>{best[0]}</b> ({best[1]:+.2f}%)
+                </div>
+                <div style="flex: 1; border-left: 1px solid #636e72; padding-left: 20px;">
+                    <span style="color: #ff7675; font-size: 0.9em;">🐻 TOP BEAR</span><br>
+                    <b>{worst[0]}</b> ({worst[1]:+.2f}%)
+                </div>
+            </div>
+        </div>
+        """
+
+    # 5. CONSTRUCT FINAL HTML
+    full_html = f"""
+    <html>
+    <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px;">
+        <h1 style="color: #2d3436; margin-bottom: 25px;">🏛️ Market Intelligence Report</h1>
+        {summary_html}
+        {report_body}
+        <p style="font-size: 0.8em; color: #b2bec3; margin-top: 40px; text-align: center;">
+            Generated by Gemini 3 Flash Bot • {today_str}
+        </p>
+    </body>
+    </html>
+    """
+
+    # 6. EMAIL SENDING (One-Subject Safety)
     msg = EmailMessage()
     top_move = max([abs(x[1]) for x in all_changes]) if all_changes else 0
     final_subject = f"Market Intel: {today_str}"
@@ -117,15 +150,15 @@ def run_tracker():
     msg['Subject'] = final_subject
     msg['From'] = SENDER_EMAIL
     msg['To'] = SENDER_EMAIL
-    msg.add_alternative(html_content, subtype='html')
+    msg.add_alternative(full_html, subtype='html')
 
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
             smtp.send_message(msg)
-        print(f"✅ Success! Report sent: {final_subject}")
+        print(f"✅ Executive Report Sent: {final_subject}")
     except Exception as e:
-        print(f"❌ Failed: {e}")
+        print(f"❌ Dispatch Failed: {e}")
 
 if __name__ == "__main__":
     run_tracker()
