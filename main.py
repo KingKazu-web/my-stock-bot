@@ -63,8 +63,16 @@ def get_pro_news_data(ticker, name):
         stock = yf.Ticker(ticker)
         news = stock.news
         if news:
-            title = news[0].get('title', f'Latest {name} news')
-            link = f"https://finance.yahoo.com/quote/{ticker}/news"
+            item = news[0]
+            # yfinance nests data under 'content' in newer versions
+            content = item.get('content', item)
+            title = content.get('title', f'Latest {name} news')
+            # Try to get a direct article URL, fall back to Yahoo Finance page
+            link = (
+                content.get('canonicalUrl', {}).get('url') or
+                content.get('clickThroughUrl', {}).get('url') or
+                f"https://finance.yahoo.com/quote/{ticker}/news"
+            )
             return title, link
     except:
         pass
