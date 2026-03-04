@@ -2,18 +2,20 @@ import os
 import yfinance as yf
 import smtplib
 import datetime
-import base64
 import io
+import re
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 
 print("--- Starting Market Intelligence Bot: Ultimate Edition ---")
 
 # ── SECRETS ────────────────────────────────────────────────────────────────────
-SENDER_EMAIL      = os.environ.get("MY_EMAIL")
+SENDER_EMAIL       = os.environ.get("MY_EMAIL")
 EMAIL_APP_PASSWORD = os.environ.get("MY_PASSWORD")
 
 # ── ASSETS ─────────────────────────────────────────────────────────────────────
@@ -31,7 +33,7 @@ ASSETS = {
     }
 }
 
-# ── WATCHLIST (alerts only if moves > 3%) ──────────────────────────────────────
+# ── WATCHLIST (alerts only if moves > 3%) ─────────────────────────────────────
 WATCHLIST = {
     "MSFT": "Microsoft", "GOOGL": "Alphabet", "AMD": "AMD",
     "JPM": "JPMorgan", "XOM": "Exxon"
@@ -95,25 +97,23 @@ def get_momentum_meter(prices):
 
 def get_52w_badge(current, low_52, high_52):
     if low_52 is None or high_52 is None: return ""
-    pct_from_high = ((high_52 - current) / high_52) * 100
-    pct_from_low  = ((current - low_52) / low_52) * 100
-    if pct_from_high <= 5:
+    if ((high_52 - current) / high_52) * 100 <= 5:
         return '<span style="background:#27ae60;color:white;padding:1px 5px;border-radius:4px;font-size:0.75em;">🏆 52W HIGH</span>'
-    if pct_from_low <= 5:
+    if ((current - low_52) / low_52) * 100 <= 5:
         return '<span style="background:#e74c3c;color:white;padding:1px 5px;border-radius:4px;font-size:0.75em;">⚠️ 52W LOW</span>'
     return ""
 
 def get_vix_label(vix_val):
     if vix_val is None: return "❓ Unknown", "#888"
-    if vix_val < 15:  return f"😎 Calm ({vix_val:.1f})", "#27ae60"
-    if vix_val < 20:  return f"😐 Neutral ({vix_val:.1f})", "#f39c12"
-    if vix_val < 30:  return f"😰 Fearful ({vix_val:.1f})", "#e67e22"
-    return             f"😱 Extreme Fear ({vix_val:.1f})", "#e74c3c"
+    if vix_val < 15:   return f"😎 Calm ({vix_val:.1f})", "#27ae60"
+    if vix_val < 20:   return f"😐 Neutral ({vix_val:.1f})", "#f39c12"
+    if vix_val < 30:   return f"😰 Fearful ({vix_val:.1f})", "#e67e22"
+    return                    f"😱 Extreme Fear ({vix_val:.1f})", "#e74c3c"
 
 def make_sparkline(prices, color):
-    """Returns a base64-encoded inline PNG sparkline chart."""
+    """Returns PNG bytes — attached via CID so Gmail renders it properly."""
     try:
-        fig, ax = plt.subplots(figsize=(3, 0.6))
+        fig, ax = plt.subplots(figsize=(4, 0.7))
         ax.plot(prices, color=color, linewidth=1.5)
         ax.fill_between(range(len(prices)), prices, min(prices), alpha=0.15, color=color)
         ax.axis('off')
@@ -122,7 +122,7 @@ def make_sparkline(prices, color):
         plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0, dpi=80, transparent=True)
         plt.close(fig)
         buf.seek(0)
-        return base64.b64encode(buf.read()).decode('utf-8')
+        return buf.read()
     except:
         return None
 
@@ -130,11 +130,7 @@ def get_earnings_warning(ticker):
     try:
         cal = yf.Ticker(ticker).calendar
         if cal is None: return ""
-        # calendar can be a dict with 'Earnings Date' key
-        if isinstance(cal, dict):
-            dates = cal.get('Earnings Date', [])
-        else:
-            dates = []
+        dates = cal.get('Earnings Date', []) if isinstance(cal, dict) else []
         if not dates: return ""
         next_date = dates[0] if hasattr(dates[0], 'date') else None
         if next_date is None: return ""
@@ -163,7 +159,7 @@ def build_sector_heatmap():
                 r = int(231 + (255 - 231) * intensity)
                 g = int(76  + (0   - 76)  * intensity)
                 b = int(60  + (0   - 60)  * intensity)
-            bg = f"rgb({r},{g},{b})"
+            bg        = f"rgb({r},{g},{b})"
             txt_color = "white" if intensity > 0.3 else "#333"
             cells += f"""
             <div style="background:{bg};color:{txt_color};padding:8px 4px;border-radius:6px;text-align:center;font-size:0.78em;">
@@ -177,7 +173,7 @@ def build_sector_heatmap():
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">{cells}</div>
     </div>"""
 
-# ── WATCHLIST ALERTS ────────────────────────────────────────────────────────────
+# ── WATCHLIST ALERTS ───────────────────────────────────────────────────────────
 
 def build_watchlist_alerts():
     alerts = ""
@@ -187,8 +183,8 @@ def build_watchlist_alerts():
             if len(hist) < 2: continue
             chg = ((hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2]) * 100
             if abs(chg) >= 3:
-                color  = "#27ae60" if chg > 0 else "#e74c3c"
-                arrow  = "▲" if chg > 0 else "▼"
+                color = "#27ae60" if chg > 0 else "#e74c3c"
+                arrow = "▲" if chg > 0 else "▼"
                 alerts += f'<div style="padding:6px 10px;margin:4px 0;border-left:4px solid {color};background:#fafafa;"><b>{name} ({ticker})</b> <span style="color:{color};">{arrow} {chg:+.2f}%</span></div>'
         except:
             pass
@@ -200,13 +196,13 @@ def build_watchlist_alerts():
         {alerts}
     </div>"""
 
-# ── TOP MOVERS PODIUM ───────────────────────────────────────────────────────────
+# ── TOP MOVERS PODIUM ──────────────────────────────────────────────────────────
 
 def build_podium(all_data):
     if not all_data: return ""
     sorted_data = sorted(all_data, key=lambda x: x['change'], reverse=True)
-    winner  = sorted_data[0]
-    loser   = sorted_data[-1]
+    winner = sorted_data[0]
+    loser  = sorted_data[-1]
     return f"""
     <div style="display:flex;gap:12px;margin-bottom:20px;">
         <div style="flex:1;background:#eafaf1;border:2px solid #27ae60;border-radius:10px;padding:12px;text-align:center;">
@@ -221,11 +217,11 @@ def build_podium(all_data):
         </div>
     </div>"""
 
-# ── MAIN ────────────────────────────────────────────────────────────────────────
+# ── MAIN ───────────────────────────────────────────────────────────────────────
 
 def run_tracker():
-    today_str   = datetime.date.today().strftime("%b %d, %Y")
-    day_of_week = datetime.date.today().strftime("%A")
+    today_str       = datetime.date.today().strftime("%b %d, %Y")
+    day_of_week     = datetime.date.today().strftime("%A")
     market_headline = get_market_headline()
 
     # VIX Fear & Greed
@@ -237,8 +233,9 @@ def run_tracker():
     except: pass
     vix_label, vix_color = get_vix_label(vix_val)
 
-    report_body = ""
-    all_data    = []
+    report_body  = ""
+    all_data     = []
+    spark_images = {}   # cid_key -> PNG bytes
     advancers = decliners = 0
     vol_detected = False
 
@@ -252,18 +249,18 @@ def run_tracker():
                 hist  = stock.history(period="1y")
                 if len(hist) < 2: continue
 
-                prices   = hist['Close'].tolist()
-                price    = prices[-1]
-                change   = ((prices[-1] - prices[-2]) / prices[-2]) * 100
-                low_52   = min(prices[-252:]) if len(prices) >= 252 else min(prices)
-                high_52  = max(prices[-252:]) if len(prices) >= 252 else max(prices)
+                prices  = hist['Close'].tolist()
+                price   = prices[-1]
+                change  = ((prices[-1] - prices[-2]) / prices[-2]) * 100
+                low_52  = min(prices[-252:]) if len(prices) >= 252 else min(prices)
+                high_52 = max(prices[-252:]) if len(prices) >= 252 else max(prices)
 
                 all_data.append({'name': name, 'ticker': ticker, 'change': change})
                 if change > 0: advancers += 1
                 else:          decliners += 1
 
-                curr_vol = hist['Volume'].iloc[-1]
-                avg_vol  = hist['Volume'].iloc[-31:-1].mean()
+                curr_vol   = hist['Volume'].iloc[-1]
+                avg_vol    = hist['Volume'].iloc[-31:-1].mean()
                 conviction = "⚡" if curr_vol > (avg_vol * 1.5) else ""
                 if conviction: vol_detected = True
 
@@ -276,8 +273,14 @@ def run_tracker():
                 badge_52 = get_52w_badge(price, low_52, high_52)
                 earn_tag = get_earnings_warning(ticker)
 
-                spark_b64 = make_sparkline(prices[-30:], color)
-                spark_html = f'<img src="data:image/png;base64,{spark_b64}" style="width:100%;height:40px;display:block;margin:6px 0;">' if spark_b64 else ""
+                # Sparkline: use CID attachment so Gmail renders it
+                cid_key   = re.sub(r'[^a-zA-Z0-9]', '_', ticker)
+                spark_png = make_sparkline(prices[-30:], color)
+                if spark_png:
+                    spark_images[cid_key] = spark_png
+                    spark_html = f'<img src="cid:{cid_key}" style="width:100%;max-width:400px;height:50px;display:block;margin:6px 0;">'
+                else:
+                    spark_html = ""
 
                 headline, link = get_pro_news_data(ticker, name)
 
@@ -293,16 +296,17 @@ def run_tracker():
                     {spark_html}
                     <small>📰 <a href="{link}" style="color:#0984e3;text-decoration:none;">{headline[:80]}...</a></small>
                 </div>"""
+
             except Exception as e:
                 print(f"  ⚠️  Error on {ticker}: {e}")
 
-    # Weekly digest note on Fridays
+    # Friday digest note
     weekly_note = ""
     if day_of_week == "Friday":
         weekly_note = '<div style="background:#fff3cd;border:1px solid #ffc107;padding:10px;border-radius:8px;margin-bottom:16px;">📆 <b>It\'s Friday!</b> Review your week and consider rebalancing over the weekend.</div>'
 
-    podium_html   = build_podium(all_data)
-    sector_html   = build_sector_heatmap()
+    podium_html    = build_podium(all_data)
+    sector_html    = build_sector_heatmap()
     watchlist_html = build_watchlist_alerts()
 
     legend_html = """
@@ -339,13 +343,24 @@ def run_tracker():
     {legend_html}
     </body></html>"""
 
+    # ── BUILD EMAIL WITH CID IMAGE ATTACHMENTS ─────────────────────────────────
+    msg = MIMEMultipart('related')
     subject_emoji = "⚡ " if vol_detected else ""
     subject_day   = "📆 WEEKLY WRAP | " if day_of_week == "Friday" else ""
-    msg = EmailMessage()
-    msg['Subject'] = f"{subject_emoji}{subject_day}Market Intel: {today_str} ({advancers}↑ {decliners}↓) | Sentiment: {vix_label}"
+    msg['Subject'] = f"{subject_emoji}{subject_day}Market Intel: {today_str} ({advancers}↑ {decliners}↓) | {vix_label}"
     msg['From']    = SENDER_EMAIL
     msg['To']      = SENDER_EMAIL
-    msg.add_alternative(full_html, subtype='html')
+
+    msg_alt = MIMEMultipart('alternative')
+    msg.attach(msg_alt)
+    msg_alt.attach(MIMEText(full_html, 'html'))
+
+    # Attach each sparkline PNG with its CID so the HTML can reference it
+    for cid_key, png_bytes in spark_images.items():
+        img = MIMEImage(png_bytes, 'png')
+        img.add_header('Content-ID', f'<{cid_key}>')
+        img.add_header('Content-Disposition', 'inline')
+        msg.attach(img)
 
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
