@@ -5,7 +5,7 @@ import requests
 import datetime
 from email.message import EmailMessage
 
-print("--- Starting Market Intelligence Bot: Final Master Build ---")
+print("--- Starting Market Intelligence Bot: Yahoo Siphon Edition ---")
 
 # 1. SETUP SECRETS
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
@@ -28,12 +28,15 @@ ASSETS = {
 }
 
 def get_market_why():
-    if not NEWS_API_KEY: return "Market context unavailable."
-    url = f'https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=1&apiKey={NEWS_API_KEY}'
+    """Siphons top news from the S&P 500 to act as the global 'Why'."""
     try:
-        data = requests.get(url).json()
-        return data['articles'][0]['title'] if data['articles'] else "No major catalyst found."
-    except: return "Global market news fetch failed."
+        market = yf.Ticker("^GSPC")
+        news = market.news
+        if news:
+            return news[0].get('title', "Market showing standard volatility.")
+        return "No major global catalysts reported."
+    except:
+        return "Global market context currently unavailable."
 
 def get_momentum_meter(prices):
     if not prices or len(prices) < 2: return "[  ?  ]"
@@ -63,7 +66,7 @@ def get_pro_news_data(ticker, name):
     try:
         r = requests.get(url).json()
         articles = r.get('articles', [])
-        if not articles: # Fallback to broad search
+        if not articles:
             url_broad = f'https://newsapi.org/v2/everything?q={name}&language=en&sortBy=relevancy&pageSize=1&apiKey={NEWS_API_KEY}'
             articles = requests.get(url_broad).json().get('articles', [])
         if articles:
@@ -82,6 +85,7 @@ def run_tracker():
     for category, items in ASSETS.items():
         report_body += f"<h3 style='border-bottom: 2px solid #eee; padding-top: 15px; color: #34495e;'>{category}</h3>"
         for ticker, name in items.items():
+            print(f"🔍 Analyzing {name}...")
             try:
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="35d")
@@ -93,7 +97,7 @@ def run_tracker():
                 if change > 0: advancers += 1
                 else: decliners += 1
 
-                # Conviction logic
+                # Conviction (Volume Spike)
                 curr_vol, avg_vol = hist['Volume'].iloc[-1], hist['Volume'].iloc[-31:-1].mean()
                 conviction = "⚡" if curr_vol > (avg_vol * 1.5) else ""
                 if conviction: vol_detected = True
@@ -145,7 +149,7 @@ def run_tracker():
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
         smtp.send_message(msg)
-    print("✅ Full Report Dispatched.")
+    print("✅ Dispatch Successful.")
 
 if __name__ == "__main__":
     run_tracker()
