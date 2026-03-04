@@ -5,7 +5,7 @@ import requests
 import datetime
 from email.message import EmailMessage
 
-print("--- Starting Pro Intelligence Bot: Clean Dashboard Edition ---")
+print("--- Starting Pro Intelligence Bot: Conviction Edition ---")
 
 # 1. SETUP SECRETS
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
@@ -14,8 +14,8 @@ NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
 
 # 2. ASSETS
 ASSETS = {
-    "STOCKS": {"AAPL": "Apple", "NVDA": "Nvidia", "TSLA": "Tesla", "AMZN": "Amazon"},
-    "CRYPTO": {"BTC-USD": "Bitcoin", "ETH-USD": "Ethereum"},
+    "STOCKS": {"AAPL": "Apple", "NVDA": "Nvidia", "TSLA": "Tesla", "AMZN": "Amazon", "META": "Meta"},
+    "CRYPTO": {"BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana"},
     "MACRO": {"GC=F": "Gold", "CL=F": "Crude Oil", "^TNX": "10-Yr Bond"}
 }
 
@@ -37,15 +37,12 @@ def get_momentum_meter(prices):
     return f"[{''.join(meter)}]"
 
 def calculate_rsi(prices, periods=14):
-    """Calculates Relative Strength Index to show if a stock is overbought/oversold."""
     if len(prices) < periods: return "N/A"
-    gains = []
-    losses = []
+    gains, losses = [], []
     for i in range(1, len(prices)):
         diff = prices[i] - prices[i-1]
         gains.append(max(diff, 0))
         losses.append(abs(min(diff, 0)))
-    
     avg_gain = sum(gains[-periods:]) / periods
     avg_loss = sum(losses[-periods:]) / periods
     if avg_loss == 0: return 100
@@ -63,29 +60,36 @@ def get_pro_news_data(ticker, name):
 def run_tracker():
     today_str = datetime.date.today().strftime("%b %d, %Y")
     market_why = get_market_why()
-    all_changes = []
     report_body = ""
+    volatility_detected = False
 
     for category, items in ASSETS.items():
         report_body += f"<h3 style='border-bottom: 2px solid #eee; padding-top: 15px; color: #34495e;'>{category}</h3>"
         for ticker, name in items.items():
+            print(f"🔍 Analyzing {name}...")
             try:
                 stock = yf.Ticker(ticker)
-                # We pull 30 days to ensure we have enough data for a 14-day RSI
-                hist = stock.history(period="30d")
+                hist = stock.history(period="35d") # Extra days for RSI/Volume Avg
                 if len(hist) < 2: continue
                 
                 prices = hist['Close'].tolist()
                 price, change = prices[-1], ((prices[-1] - prices[-2]) / prices[-2]) * 100
-                rsi_val = calculate_rsi(prices)
-                momentum = get_momentum_meter(prices[-7:]) # 7-day meter
-                all_changes.append((name, change))
                 
-                # Logic for RSI Color
-                rsi_status = "⚪"
+                # VOLUME SPIKE LOGIC
+                current_vol = hist['Volume'].iloc[-1]
+                avg_vol = hist['Volume'].iloc[-31:-1].mean()
+                volume_ratio = current_vol / avg_vol
+                conviction_alert = "⚡" if volume_ratio > 1.5 else ""
+                if volume_ratio > 1.5: volatility_detected = True
+
+                rsi_val = calculate_rsi(prices)
+                momentum = get_momentum_meter(prices[-7:])
+                
+                # RSI Visual Status
+                rsi_status = ""
                 if isinstance(rsi_val, float):
-                    if rsi_val > 70: rsi_status = "🔥 (Hot)"
-                    elif rsi_val < 30: rsi_status = "❄️ (Cold)"
+                    if rsi_val > 70: rsi_status = "🔥"
+                    elif rsi_val < 30: rsi_status = "❄️"
 
                 color = "#27ae60" if change > 0 else "#e74c3c"
                 headline, link = get_pro_news_data(ticker, name)
@@ -93,7 +97,7 @@ def run_tracker():
                 report_body += f"""
                 <div style="margin-bottom: 12px; padding: 10px; border-left: 4px solid {color}; background: #fafafa;">
                     <div style="display: flex; justify-content: space-between;">
-                        <b>{ticker}</b> 
+                        <b>{ticker} {conviction_alert}</b> 
                         <span style="font-family: monospace;">{momentum}</span>
                     </div>
                     <b style="color: {color};">${price:.2f} ({change:+.2f}%)</b> | 
@@ -103,18 +107,17 @@ def run_tracker():
                 """
             except Exception as e: print(f"Error {ticker}: {e}")
 
-    # LEGEND SECTION
     legend_html = """
     <div style="background: #f1f2f6; padding: 15px; border-radius: 8px; font-size: 0.85em; color: #2f3542; margin-top: 20px;">
-        <b>📌 REPORT LEGEND</b><br>
-        • <b>Momentum Meter:</b> Shows where price sits in its 7-day range. <code>[●▬▬▬▬]</code> is Low, <code>[▬▬▬▬●]</code> is High.<br>
-        • <b>RSI:</b> Measures speed. Above 70 (Hot) means it might drop soon. Below 30 (Cold) means it might bounce soon.
+        <b>📌 CONVICTION LEGEND</b><br>
+        • ⚡ <b>Volume Spike:</b> Today's trading volume is >150% of the monthly average (High Conviction).<br>
+        • 🔥/❄️ <b>RSI:</b> Overbought (Hot) or Oversold (Cold).
     </div>
     """
 
     summary_html = f"""
     <div style="background: #2d3436; color: white; padding: 25px; border-radius: 12px; margin-bottom: 20px;">
-        <h2 style="margin: 0; color: #00cec9;">🏛️ Executive Brief: {today_str}</h2>
+        <h2 style="margin: 0; color: #00cec9;">🏛️ Market Pulse: {today_str}</h2>
         <p style="margin: 15px 0; border-left: 3px solid #00cec9; padding-left: 10px; font-style: italic;">
             "{market_why}"
         </p>
@@ -124,7 +127,10 @@ def run_tracker():
     full_html = f"<html><body style='font-family: sans-serif; max-width: 600px; margin: auto;'>{summary_html}{report_body}{legend_html}</body></html>"
 
     msg = EmailMessage()
-    msg['Subject'] = f"Intel: {today_str}"
+    subject = f"Intel: {today_str}"
+    if volatility_detected: subject = f"⚡ HIGH VOLUME ALERT: {today_str}"
+    
+    msg['Subject'] = subject
     msg['From'] = SENDER_EMAIL
     msg['To'] = SENDER_EMAIL
     msg.add_alternative(full_html, subtype='html')
@@ -132,7 +138,7 @@ def run_tracker():
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
         smtp.send_message(msg)
-    print("✅ Clean Dashboard Delivered!")
+    print(f"✅ Conviction Dashboard Delivered! Volume Alert: {volatility_detected}")
 
 if __name__ == "__main__":
     run_tracker()
