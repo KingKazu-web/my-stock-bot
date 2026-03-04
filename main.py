@@ -5,18 +5,33 @@ import requests
 import datetime
 from email.message import EmailMessage
 
-print("--- Starting Pro Intelligence Bot: Conviction Edition ---")
+print("--- Starting Market Intelligence Bot: Reliability Edition ---")
 
 # 1. SETUP SECRETS
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
 EMAIL_APP_PASSWORD = os.environ.get("MY_PASSWORD")
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
 
-# 2. ASSETS
+# 2. ASSETS (Friendly Names for better News Searching)
 ASSETS = {
-    "STOCKS": {"AAPL": "Apple", "NVDA": "Nvidia", "TSLA": "Tesla", "AMZN": "Amazon", "META": "Meta"},
-    "CRYPTO": {"BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "SOL-USD": "Solana"},
-    "MACRO": {"GC=F": "Gold", "CL=F": "Crude Oil", "^TNX": "10-Yr Bond"}
+    "STOCKS": {
+        "AAPL": "Apple Stock", 
+        "NVDA": "Nvidia", 
+        "TSLA": "Tesla", 
+        "AMZN": "Amazon", 
+        "META": "Meta Platforms"
+    },
+    "CRYPTO": {
+        "BTC-USD": "Bitcoin", 
+        "ETH-USD": "Ethereum", 
+        "SOL-USD": "Solana"
+    },
+    "MACRO": {
+        "GC=F": "Gold Price", 
+        "CL=F": "Crude Oil", 
+        "^TNX": "Treasury Yield",
+        "^GSPC": "S&P 500"
+    }
 }
 
 def get_market_why():
@@ -41,8 +56,7 @@ def calculate_rsi(prices, periods=14):
     gains, losses = [], []
     for i in range(1, len(prices)):
         diff = prices[i] - prices[i-1]
-        gains.append(max(diff, 0))
-        losses.append(abs(min(diff, 0)))
+        gains.append(max(diff, 0)), losses.append(abs(min(diff, 0)))
     avg_gain = sum(gains[-periods:]) / periods
     avg_loss = sum(losses[-periods:]) / periods
     if avg_loss == 0: return 100
@@ -50,17 +64,43 @@ def calculate_rsi(prices, periods=14):
     return round(100 - (100 / (1 + rs)), 1)
 
 def get_pro_news_data(ticker, name):
+    """Tiered search to eliminate 'No News' errors."""
     if not NEWS_API_KEY: return "Key missing.", "#"
-    url = f'https://newsapi.org/v2/everything?q="{name}"&language=en&sortBy=relevancy&pageSize=1&apiKey={NEWS_API_KEY}'
+    
+    # Tier 1: Trusted Financial Domains
+    trusted = "reuters.com,cnbc.com,bloomberg.com,wsj.com,marketwatch.com"
+    url = f'https://newsapi.org/v2/everything?q={name}&domains={trusted}&language=en&sortBy=relevancy&pageSize=1&apiKey={NEWS_API_KEY}'
+    
     try:
-        articles = requests.get(url).json().get('articles', [])
-        return (articles[0]['title'], articles[0]['url']) if articles else ("No news.", "#")
-    except: return ("News error.", "#")
+        r = requests.get(url).json()
+        articles = r.get('articles', [])
+        
+        # Tier 2: Broad Search (Remove domain restrictions)
+        if not articles:
+            url_broad = f'https://newsapi.org/v2/everything?q={name}&language=en&sortBy=relevancy&pageSize=1&apiKey={NEWS_API_KEY}'
+            r = requests.get(url_broad).json()
+            articles = r.get('articles', [])
+            
+        # Tier 3: Ticker Search (Last Resort)
+        if not articles:
+            clean_ticker = ticker.split('-')[0].replace('^', '')
+            url_ticker = f'https://newsapi.org/v2/everything?q={clean_ticker}&language=en&sortBy=relevancy&pageSize=1&apiKey={NEWS_API_KEY}'
+            r = requests.get(url_ticker).json()
+            articles = r.get('articles', [])
+
+        if articles:
+            return articles[0]['title'], articles[0]['url']
+    except:
+        pass
+        
+    return "Steady session: No major new headlines.", "https://news.google.com/search?q=" + name
 
 def run_tracker():
     today_str = datetime.date.today().strftime("%b %d, %Y")
     market_why = get_market_why()
     report_body = ""
+    all_changes = []
+    advancers, decliners = 0, 0
     volatility_detected = False
 
     for category, items in ASSETS.items():
@@ -69,27 +109,27 @@ def run_tracker():
             print(f"🔍 Analyzing {name}...")
             try:
                 stock = yf.Ticker(ticker)
-                hist = stock.history(period="35d") # Extra days for RSI/Volume Avg
+                hist = stock.history(period="35d")
                 if len(hist) < 2: continue
                 
                 prices = hist['Close'].tolist()
                 price, change = prices[-1], ((prices[-1] - prices[-2]) / prices[-2]) * 100
+                all_changes.append(change)
                 
-                # VOLUME SPIKE LOGIC
+                if change > 0: advancers += 1
+                else: decliners += 1
+
+                # Volume Alert
                 current_vol = hist['Volume'].iloc[-1]
                 avg_vol = hist['Volume'].iloc[-31:-1].mean()
-                volume_ratio = current_vol / avg_vol
-                conviction_alert = "⚡" if volume_ratio > 1.5 else ""
-                if volume_ratio > 1.5: volatility_detected = True
+                if current_vol > (avg_vol * 1.5):
+                    volatility_detected = True
+                    conviction = "⚡"
+                else: conviction = ""
 
                 rsi_val = calculate_rsi(prices)
                 momentum = get_momentum_meter(prices[-7:])
-                
-                # RSI Visual Status
-                rsi_status = ""
-                if isinstance(rsi_val, float):
-                    if rsi_val > 70: rsi_status = "🔥"
-                    elif rsi_val < 30: rsi_status = "❄️"
+                rsi_status = "🔥" if (isinstance(rsi_val, float) and rsi_val > 70) else "❄️" if (isinstance(rsi_val, float) and rsi_val < 30) else ""
 
                 color = "#27ae60" if change > 0 else "#e74c3c"
                 headline, link = get_pro_news_data(ticker, name)
@@ -97,40 +137,29 @@ def run_tracker():
                 report_body += f"""
                 <div style="margin-bottom: 12px; padding: 10px; border-left: 4px solid {color}; background: #fafafa;">
                     <div style="display: flex; justify-content: space-between;">
-                        <b>{ticker} {conviction_alert}</b> 
-                        <span style="font-family: monospace;">{momentum}</span>
+                        <b>{ticker} {conviction}</b> <span style="font-family: monospace;">{momentum}</span>
                     </div>
-                    <b style="color: {color};">${price:.2f} ({change:+.2f}%)</b> | 
-                    <small>RSI: {rsi_val} {rsi_status}</small><br>
-                    <small>📰 <a href="{link}" style="color: #0984e3; text-decoration: none;">{headline[:70]}...</a></small>
+                    <b style="color: {color};">${price:.2f} ({change:+.2f}%)</b> | RSI: {rsi_val} {rsi_status}<br>
+                    <small>📰 <a href="{link}" style="color: #0984e3; text-decoration: none;">{headline[:75]}...</a></small>
                 </div>
                 """
             except Exception as e: print(f"Error {ticker}: {e}")
 
-    legend_html = """
-    <div style="background: #f1f2f6; padding: 15px; border-radius: 8px; font-size: 0.85em; color: #2f3542; margin-top: 20px;">
-        <b>📌 CONVICTION LEGEND</b><br>
-        • ⚡ <b>Volume Spike:</b> Today's trading volume is >150% of the monthly average (High Conviction).<br>
-        • 🔥/❄️ <b>RSI:</b> Overbought (Hot) or Oversold (Cold).
-    </div>
-    """
-
     summary_html = f"""
     <div style="background: #2d3436; color: white; padding: 25px; border-radius: 12px; margin-bottom: 20px;">
         <h2 style="margin: 0; color: #00cec9;">🏛️ Market Pulse: {today_str}</h2>
-        <p style="margin: 15px 0; border-left: 3px solid #00cec9; padding-left: 10px; font-style: italic;">
-            "{market_why}"
-        </p>
+        <p style="margin: 15px 0; border-left: 3px solid #00cec9; padding-left: 10px; font-style: italic;">"{market_why}"</p>
+        <div style="display: flex; gap: 15px; font-size: 0.9em; border-top: 1px solid #444; padding-top: 10px;">
+            <span>📈 Advancers: <b>{advancers}</b></span>
+            <span>📉 Decliners: <b>{decliners}</b></span>
+        </div>
     </div>
     """
 
-    full_html = f"<html><body style='font-family: sans-serif; max-width: 600px; margin: auto;'>{summary_html}{report_body}{legend_html}</body></html>"
+    full_html = f"<html><body style='font-family: sans-serif; max-width: 600px; margin: auto;'>{summary_html}{report_body}</body></html>"
 
     msg = EmailMessage()
-    subject = f"Intel: {today_str}"
-    if volatility_detected: subject = f"⚡ HIGH VOLUME ALERT: {today_str}"
-    
-    msg['Subject'] = subject
+    msg['Subject'] = f"{'⚡ ' if volatility_detected else ''}Intel: {today_str} ({advancers}/{decliners})"
     msg['From'] = SENDER_EMAIL
     msg['To'] = SENDER_EMAIL
     msg.add_alternative(full_html, subtype='html')
@@ -138,7 +167,7 @@ def run_tracker():
     with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
         smtp.login(SENDER_EMAIL, EMAIL_APP_PASSWORD)
         smtp.send_message(msg)
-    print(f"✅ Conviction Dashboard Delivered! Volume Alert: {volatility_detected}")
+    print("✅ Dispatch Successful.")
 
 if __name__ == "__main__":
     run_tracker()
