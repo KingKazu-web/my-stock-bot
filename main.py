@@ -1,7 +1,6 @@
 import os
 import yfinance as yf
 import smtplib
-import requests
 import datetime
 from email.message import EmailMessage
 
@@ -10,7 +9,6 @@ print("--- Starting Market Intelligence Bot: Bulletproof Edition ---")
 # 1. SETUP SECRETS
 SENDER_EMAIL = os.environ.get("MY_EMAIL")
 EMAIL_APP_PASSWORD = os.environ.get("MY_PASSWORD")
-NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
 
 # 2. ASSETS
 ASSETS = {
@@ -60,26 +58,16 @@ def calculate_rsi(prices, periods=14):
     return round(100 - (100 / (1 + rs)), 1)
 
 def get_pro_news_data(ticker, name):
-    """Simplified, high-hit-rate news fetcher."""
-    if not NEWS_API_KEY: return "Key missing.", "#"
-    
-    # Clean ticker (e.g., BTC-USD -> BTC, GC=F -> Gold)
-    clean_ticker = ticker.split('-')[0].replace('^', '').replace('=F', '')
-    
-    # We search for the ticker AND the word 'stock' or 'market' to ensure relevance
-    # Removing domain filters to ensure we ALWAYS find a link
-    query = f"({clean_ticker} OR {name}) AND (stock OR market OR price)"
-    url = f'https://newsapi.org/v2/everything?q={query}&language=en&sortBy=publishedAt&pageSize=1&apiKey={NEWS_API_KEY}'
-    
+    """Uses yfinance news - completely free, no API key needed."""
     try:
-        r = requests.get(url).json()
-        articles = r.get('articles', [])
-        if articles:
-            return articles[0]['title'], articles[0]['url']
+        stock = yf.Ticker(ticker)
+        news = stock.news
+        if news:
+            title = news[0].get('title', f'Latest {name} news')
+            link = f"https://finance.yahoo.com/quote/{ticker}/news"
+            return title, link
     except:
         pass
-    
-    # Ultimate Fallback: Direct Yahoo Finance News link
     return f"View latest {name} news on Yahoo.", f"https://finance.yahoo.com/quote/{ticker}/news"
 
 def run_tracker():
